@@ -10,14 +10,18 @@
 
 <body>
   <header id="header">
+    <div id="dropTarget" class="drop-target">
+      <p>Drop a folder of DICOM files here</p>
+      <p>Or use the file input button below</p>
+    </div>
     <!-- ordered list for instructions -->
     <ol id="instructions">
       <li>
-      <!-- directory input -->
-      <label for="fileInput" id="fileInputLabel" class="file-input-label">
-        Choose a folder of DICOM files
-      </label>
-      <input type="file" id="fileInput" webkitdirectory multiple />
+        <!-- directory input -->
+        <label for="fileInput" id="fileInputLabel" class="file-input-label">
+          Choose a folder of DICOM files
+        </label>
+        <input type="file" id="fileInput" webkitdirectory multiple />
       </li>
       <li>
         <!-- file select for converted files returned from dcm2niix -->
@@ -26,7 +30,7 @@
       </li>
       <li>
         <!-- optional: save nii file in the niivue canvas from conversion -->
-         <label for="saveButton" id="saveButtonLabel">Optional: save the nifti file you are viewing</label>
+        <label for="saveButton" id="saveButtonLabel">Optional: save the nifti file you are viewing</label>
         <button id="saveButton" class="hidden">Save nifti</button>
       </li>
     </ol>

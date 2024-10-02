@@ -121,6 +121,11 @@ const runDcm2niix = async (files) => {
     console.log(resultFileList);
     hideLoadingCircle()
     showFileSelect()
+    // set the first file as the selected file
+    fileSelect.value = 0
+    // trigger the change event
+    const event = new Event('change')
+    fileSelect.dispatchEvent(event)
   } catch (error) {
     console.error(error);
     resultFileList = []
@@ -139,6 +144,72 @@ const ensureObjectOfObjects = (obj) => {
   }
 }
 
+async function handleDrop(e) {
+  e.preventDefault(); // prevent navigation to open file
+  const items = e.dataTransfer.items;
+  try {
+    showLoadingCircle()
+    const files = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i].webkitGetAsEntry();
+      if (item) {
+        await traverseFileTree(item, '', files);
+      }
+    }
+    const dcm2niix = new Dcm2niix();
+    await dcm2niix.init()
+    resultFileList = await dcm2niix.inputFromDropItems(files).run()
+    resultFileList = resultFileList.filter(file => file.name.endsWith('.nii'))
+    updateSelectItems(resultFileList)
+    console.log(resultFileList);
+    hideLoadingCircle()
+    showFileSelect()
+    // set the first file as the selected file
+    fileSelect.value = 0
+    // trigger the change event
+    const event = new Event('change')
+    fileSelect.dispatchEvent(event)
+    showText('')
+  } catch (error) {
+    console.error(error);
+    hideLoadingCircle()
+    hideFileSelect()
+    showText('Error converting files. Check the console for more information.')
+  }
+}
+
+async function traverseFileTree(item, path = '', fileArray) {
+  return new Promise((resolve) => {
+    if (item.isFile) {
+      item.file(file => {
+        file.fullPath = path + file.name;
+        // IMPORTANT: _webkitRelativePath is required for dcm2niix to work.
+        // We need to add this property so we can parse multiple directories correctly.
+        // the "webkitRelativePath" property on File objects is read-only, so we can't set it directly, hence the underscore.
+        file._webkitRelativePath = path + file.name;
+        fileArray.push(file);
+        resolve();
+      });
+    } else if (item.isDirectory) {
+      const dirReader = item.createReader();
+      const readAllEntries = () => {
+        dirReader.readEntries(entries => {
+          if (entries.length > 0) {
+            const promises = [];
+            for (const entry of entries) {
+              promises.push(traverseFileTree(entry, path + item.name + '/', fileArray));
+            }
+            Promise.all(promises).then(readAllEntries);
+          } else {
+            resolve();
+          }
+        });
+      };
+      readAllEntries();
+    }
+  });
+}
+
 async function main() {
   fileInput.addEventListener('change', async (event) => {
     if (event.target.files.length === 0) {
@@ -147,12 +218,16 @@ async function main() {
     }
     console.log('Selected files:', event.target.files);
     const selectedFiles = event.target.files;
-    const files = ensureObjectOfObjects(selectedFiles)
+    const files = ensureObjectOfObjects(selectedFiles) // probably not needed anymore with new dcm2niix version
     await runDcm2niix(files)
   });
 
   // when user changes the file to view
   fileSelect.onchange = handleFileSelectChange
+
+  // handle drag and drop
+  dropTarget.ondrop = handleDrop;
+  dropTarget.ondragover = (e) => {e.preventDefault();}
 
   // when user clicks save
   saveButton.onclick = handleSaveButtonClick
