@@ -16,8 +16,27 @@ var Dcm2niix = class {
       };
     });
   }
-  input(fileList) {
-    return new Processor({ worker: this.worker, fileList });
+  conformFileList(fileObjectOrArray) {
+    const filesWithRelativePaths = Array.from(fileObjectOrArray).map((file) => ({
+      file,
+      // need to check for both webkitRelativePath and _webkitRelativePath.
+      // _webkitRelativePath is used in case the file was not from a webkitdirectory file input element (e.g. from a drop event).
+      // IMPORTANT: it is up to other developers to ensure that the special _webkitRelativePath property is set correctly when using drop events.
+      webkitRelativePath: file.webkitRelativePath || file._webkitRelativePath || ""
+    }));
+    return filesWithRelativePaths;
+  }
+  input(fileListObject) {
+    const conformedFileList = this.conformFileList(fileListObject);
+    return new Processor({ worker: this.worker, fileList: conformedFileList });
+  }
+  inputFromWebkitDirectory(fileListObject) {
+    const conformedFileList = this.conformFileList(fileListObject);
+    return new Processor({ worker: this.worker, fileList: conformedFileList });
+  }
+  inputFromDropItems(dataTransferItemArray) {
+    const conformedFileList = this.conformFileList(dataTransferItemArray);
+    return new Processor({ worker: this.worker, fileList: conformedFileList });
   }
 };
 var Processor = class {
@@ -239,11 +258,7 @@ var Processor = class {
       if (this.worker === null) {
         reject(new Error("Worker not initialized. Did you await the init() method?"));
       }
-      const filesWithRelativePaths = Array.from(this.fileList).map((file) => ({
-        file,
-        webkitRelativePath: file.webkitRelativePath || ""
-      }));
-      this.worker.postMessage({ fileList: filesWithRelativePaths, cmd: args });
+      this.worker.postMessage({ fileList: this.fileList, cmd: args });
     });
   }
 };
