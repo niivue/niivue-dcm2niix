@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NiiVue + dcm2niix WASM</title>
+  <script type="module" crossorigin src="./assets/index-Bx2BiEO0.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CIl-M5CL.css">
+</head>
+
+<body>
+  <header id="header">
+    <!-- ordered list for instructions -->
+    <ol id="instructions">
+      <li>
+      <!-- directory input -->
+      <label for="fileInput" id="fileInputLabel" class="file-input-label">
+        Choose a folder of DICOM files
+      </label>
+      <input type="file" id="fileInput" webkitdirectory multiple />
+      </li>
+      <li>
+        <!-- file select for converted files returned from dcm2niix -->
+        <label for="fileSelect" id="fileSelectLabel">View a converted file</label>
+        <select id="fileSelect" class="hidden"></select>
+      </li>
+      <li>
+        <!-- optional: save nii file in the niivue canvas from conversion -->
+         <label for="saveButton" id="saveButtonLabel">Optional: save the nifti file you are viewing</label>
+        <button id="saveButton" class="hidden">Save nifti</button>
+      </li>
+    </ol>
+
+    <div id="loadingCircle" class="loading-circle hidden"></div>
+  </header>
+  <main id="canvas-container">
+    <canvas id="gl"></canvas>
+  </main>
+  <footer id="intensity">&nbsp;</footer>
+</body>
+
+</html>
