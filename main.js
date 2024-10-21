@@ -9,11 +9,15 @@ const nv = new Niivue({
 // reference to the results list from dcm2niix for use later
 let resultFileList = []
 let conversionTime = 0
+let downloadFile = null
 
 
 const handleSaveButtonClick = () => {
-  const name = nv.volumes[0].name
-  nv.volumes[0].saveToDisk(name)
+  let url = URL.createObjectURL(downloadFile);
+  const downloadLink = document.createElement('a');
+  downloadLink.href = url;
+  downloadLink.download = downloadFile.name;
+  downloadLink.click()
 }
 
 const showSaveButton = () => {
@@ -66,14 +70,18 @@ const handleFileSelectChange = async (event) => {
   if (selectedIndex === -1) {
     return
   }
-  removeAllVolumes()
   const selectedFile = resultFileList[selectedIndex]
-  console.log(selectedFile);
-  const image = await NVImage.loadFromFile({
-    file: selectedFile,
-    name: selectedFile.name
-  })
-  await nv.addVolume(image)
+  downloadFile =  selectedFile
+  // only load the file in niivue if it is nifti
+  if (selectedFile.name.endsWith('.nii')) {
+    removeAllVolumes()
+    console.log(selectedFile);
+    const image = await NVImage.loadFromFile({
+      file: selectedFile,
+      name: selectedFile.name
+    })
+    await nv.addVolume(image)
+  }
   showSaveButton()
 }
 
@@ -116,7 +124,7 @@ const runDcm2niix = async (files) => {
     showText(`Conversion time: ${conversionTime} seconds`)
     // filter out files that are not nifti (.nii) so we don't show them
     // in the select dropdown
-    resultFileList = resultFileList.filter(file => file.name.endsWith('.nii'))
+    // resultFileList = resultFileList.filter(file => file.name.endsWith('.nii'))
     updateSelectItems(resultFileList)
     console.log(resultFileList);
     hideLoadingCircle()
@@ -227,7 +235,7 @@ async function main() {
 
   // handle drag and drop
   dropTarget.ondrop = handleDrop;
-  dropTarget.ondragover = (e) => {e.preventDefault();}
+  dropTarget.ondragover = (e) => { e.preventDefault(); }
 
   // when user clicks save
   saveButton.onclick = handleSaveButtonClick
