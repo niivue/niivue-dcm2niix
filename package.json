@@ -9,8 +9,8 @@
         "preview": "vite preview"
     },
     "dependencies": {
-        "@niivue/dcm2niix": "^0.1.1-dev.2",
-        "@niivue/niivue": "^0.45.1"
+        "@niivue/dcm2niix": "^1.2.0",
+        "@niivue/niivue": "^0.56.0"
     },
     "devDependencies": {
         "vite": "^5.2.0"
