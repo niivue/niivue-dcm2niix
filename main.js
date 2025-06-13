@@ -2,6 +2,73 @@ import { Niivue, NVImage, DRAG_MODE, SLICE_TYPE, MULTIPLANAR_TYPE, SHOW_RENDER }
 import { Dcm2niix } from '@niivue/dcm2niix'
 import './niivue.css'
 
+async function loadFromManifest(manifestUrl) {
+  try {
+    console.log('Starting loadFromManifest...')
+    console.log(`Fetching manifest from: ${manifestUrl}`)
+
+    hideSaveButton()
+    showLoadingCircle()
+
+    console.log(`Fetching manifest from: ${manifestUrl}`)
+    const response = await fetch(manifestUrl)
+    const text = await response.text()
+    const urls = text.trim().split('\n')
+    console.log(`Fetched ${urls.length} URLs from manifest`)
+
+    const baseUrl = new URL(manifestUrl)
+
+    const dicomFiles = await Promise.all(
+      urls.map(async (relativePath, i) => {
+        const url = new URL(relativePath, baseUrl)
+        console.log(`Fetching DICOM file ${i + 1}: ${url.href}`)
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`Failed to fetch DICOM: ${url}`)
+        const arrayBuffer = await res.arrayBuffer()
+        const filename = url.pathname.split('/').pop()
+        const fullPath = `series/${filename}`
+        const file = new File([arrayBuffer], filename)
+        Object.defineProperty(file, 'webkitRelativePath', {
+          value: fullPath,
+          writable: false
+        })
+        return file
+      })
+    )
+
+
+    console.log(`Created ${dicomFiles.length} DICOM file objects`)
+    const dcm2niix = new Dcm2niix()
+    console.log('Initializing dcm2niix...')
+    await dcm2niix.init()
+    console.log('Calling dcm2niix.input().run()...')
+    resultFileList = await dcm2niix.input(dicomFiles).run()
+
+    console.log(`dcm2niix returned ${resultFileList.length} files`)
+    resultFileList = resultFileList.filter(f => f.name.endsWith('.nii') || f.name.endsWith('.nii.gz'))
+    console.log(`Filtered result list: ${resultFileList.map(f => f.name).join(', ')}`)
+
+    updateSelectItems(resultFileList)
+    hideLoadingCircle()
+    showFileSelect()
+
+    fileSelect.value = 0
+    const event = new Event('change')
+    fileSelect.dispatchEvent(event)
+
+    showText('Loaded from manifest')
+    console.log('Successfully finished loadFromManifest()')
+  } catch (err) {
+    console.error('Error in loadFromManifest:', err)
+    hideLoadingCircle()
+    hideFileSelect()
+    showText('Error loading manifest')
+  }
+}
+
+
+
+
 // page-wide niivue instance
 const nv = new Niivue({
   dragAndDropEnabled: false, // disable drag and drop since we want to use input from the file input element
@@ -239,6 +306,11 @@ async function main() {
 
   // when user clicks save
   saveButton.onclick = handleSaveButtonClick
+
+  // user want to load manifest
+  document.getElementById('loadManifestBtn').onclick = () => {
+    loadFromManifest('https://niivue.github.io/niivue-demo-images/dicom/niivue-manifest.txt')
+  }
 
   // crosshair location change event
   nv.onLocationChange = handleLocationChange
