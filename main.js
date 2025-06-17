@@ -1,27 +1,34 @@
 import { Niivue, NVImage, DRAG_MODE, SLICE_TYPE, MULTIPLANAR_TYPE, SHOW_RENDER } from '@niivue/niivue'
 import { Dcm2niix } from '@niivue/dcm2niix'
+import { dicomLoader } from '@niivue/dicom-loader'
 import './niivue.css'
 
-async function loadFromManifest(manifestUrl) {
+/**
+ * Load DICOM files from a manifest URL using the Dcm2niix WebAssembly backend.
+ * 
+ * This function fetches a text-based manifest file containing relative paths to DICOM images,
+ * downloads and wraps them as `File` objects with proper `webkitRelativePath` attributes,
+ * runs the DICOM-to-NIfTI conversion via `@niivue/dcm2niix`, and updates the UI with the result.
+ * 
+ * This is a manual reference implementation that mirrors the functionality of `@niivue/dicom-loader`.
+ * 
+ * @param manifestUrl - A full URL pointing to a manifest text file with relative DICOM paths
+ * @returns A promise that resolves to an array of converted NIfTI `File` objects
+ */
+async function loadDicomsUsingDcm2niixFromManifest(manifestUrl) {
+  console.log('Starting manual DICOM load from manifest via dcm2niix...')
   try {
-    console.log('Starting loadFromManifest...')
-    console.log(`Fetching manifest from: ${manifestUrl}`)
-
     hideSaveButton()
     showLoadingCircle()
 
-    console.log(`Fetching manifest from: ${manifestUrl}`)
+    const baseUrl = new URL(manifestUrl)
     const response = await fetch(manifestUrl)
     const text = await response.text()
     const urls = text.trim().split('\n')
-    console.log(`Fetched ${urls.length} URLs from manifest`)
-
-    const baseUrl = new URL(manifestUrl)
 
     const dicomFiles = await Promise.all(
-      urls.map(async (relativePath, i) => {
+      urls.map(async (relativePath) => {
         const url = new URL(relativePath, baseUrl)
-        console.log(`Fetching DICOM file ${i + 1}: ${url.href}`)
         const res = await fetch(url)
         if (!res.ok) throw new Error(`Failed to fetch DICOM: ${url}`)
         const arrayBuffer = await res.arrayBuffer()
@@ -36,113 +43,98 @@ async function loadFromManifest(manifestUrl) {
       })
     )
 
-
-    console.log(`Created ${dicomFiles.length} DICOM file objects`)
     const dcm2niix = new Dcm2niix()
-    console.log('Initializing dcm2niix...')
     await dcm2niix.init()
-    console.log('Calling dcm2niix.input().run()...')
-    resultFileList = await dcm2niix.input(dicomFiles).run()
-
-    console.log(`dcm2niix returned ${resultFileList.length} files`)
+    let resultFileList = await dcm2niix.input(dicomFiles).run()
     resultFileList = resultFileList.filter(f => f.name.endsWith('.nii') || f.name.endsWith('.nii.gz'))
-    console.log(`Filtered result list: ${resultFileList.map(f => f.name).join(', ')}`)
 
     updateSelectItems(resultFileList)
     hideLoadingCircle()
     showFileSelect()
 
     fileSelect.value = 0
-    const event = new Event('change')
-    fileSelect.dispatchEvent(event)
+    fileSelect.dispatchEvent(new Event('change'))
+    showText('Loaded via manual dcm2niix')
 
-    showText('Loaded from manifest')
-    console.log('Successfully finished loadFromManifest()')
+    return resultFileList
   } catch (err) {
-    console.error('Error in loadFromManifest:', err)
+    console.error('Error in loadDicomsUsingDcm2niixFromManifest:', err)
     hideLoadingCircle()
     hideFileSelect()
-    showText('Error loading manifest')
+    showText('Error loading DICOMs manually')
+    return []
   }
+}
+
+/**
+ * Load DICOMs from a manifest using @niivue/dicom-loader
+ * and display the time taken to load and decode them.
+ * 
+ * @param manifestURL - URL to a text manifest with relative DICOM file paths
+ */
+async function loadDicomsWithNiivueLoader(manifestURL) {
+  console.log('loading manifest')
+  const startTime = performance.now()
+
+  nv.useDicomLoader({
+    loader: dicomLoader
+  })
+
+  await nv.loadDicoms([
+    {
+      url: manifestURL,
+      isManifest: true
+    }
+  ])
+
+  const vol = nv.volumes[nv.volumes.length - 1]
+  const name = vol?.name || 'Unnamed volume'
+  const endTime = performance.now()
+  const elapsed = ((endTime - startTime) / 1000).toFixed(2)
+  showText(`Loaded ${name} in ${elapsed} seconds`)
 }
 
 
 
-
-// page-wide niivue instance
-const nv = new Niivue({
-  dragAndDropEnabled: false, // disable drag and drop since we want to use input from the file input element
-})
-// reference to the results list from dcm2niix for use later
+// Page-wide variables
+const nv = new Niivue({ dragAndDropEnabled: false })
 let resultFileList = []
-let conversionTime = 0
 let downloadFile = null
 
-
-const handleSaveButtonClick = () => {
-  let url = URL.createObjectURL(downloadFile);
-  const downloadLink = document.createElement('a');
-  downloadLink.href = url;
-  downloadLink.download = downloadFile.name;
-  downloadLink.click()
+const showText = (text) => {
+  document.getElementById('intensity').innerHTML = text
 }
-
-const showSaveButton = () => {
-  const saveButton = document.getElementById('saveButton')
-  saveButton.classList.remove('hidden')
-}
-
-const hideSaveButton = () => {
-  const saveButton = document.getElementById('saveButton')
-  saveButton.classList.add('hidden')
-}
-
-const showLoadingCircle = () => {
-  loadingCircle.classList.remove('hidden')
-}
-
-const hideLoadingCircle = () => {
-  loadingCircle.classList.add('hidden')
-}
-
-const hideFileSelect = () => {
-  fileSelect.classList.add('hidden')
-}
-
-const showFileSelect = () => {
-  fileSelect.classList.remove('hidden')
-}
-
-const handleLocationChange = (data) => {
-  document.getElementById("intensity").innerHTML = data.string
-}
-
-const showText = (time) => {
-  document.getElementById("intensity").innerHTML = time
-}
-
-const removeAllVolumes = () => {
-  const vols = nv.volumes
-  for (let i = 0; i < vols.length; i++) {
-    nv.removeVolume(vols[i])
-  }
+const showSaveButton = () => document.getElementById('saveButton').classList.remove('hidden')
+const hideSaveButton = () => document.getElementById('saveButton').classList.add('hidden')
+const showLoadingCircle = () => loadingCircle.classList.remove('hidden')
+const hideLoadingCircle = () => loadingCircle.classList.add('hidden')
+const showFileSelect = () => fileSelect.classList.remove('hidden')
+const hideFileSelect = () => fileSelect.classList.add('hidden')
+const removeAllVolumes = () => nv.volumes.forEach(v => nv.removeVolume(v))
+const removeSelectItems = () => { while (fileSelect.firstChild) fileSelect.removeChild(fileSelect.firstChild) }
+const updateSelectItems = (files) => {
+  removeSelectItems()
+  files.forEach((file, i) => {
+    const option = document.createElement('option')
+    option.value = i
+    option.text = file.name
+    fileSelect.appendChild(option)
+  })
+  const option = document.createElement('option')
+  option.value = -1
+  option.text = 'Select a file'
+  option.selected = true
+  fileSelect.appendChild(option)
 }
 
 const handleFileSelectChange = async (event) => {
-  if (resultFileList.length === 0) {
-    console.log('No files to select from');
-    return
-  }
+  if (resultFileList.length === 0) return
   const selectedIndex = parseInt(event.target.value)
-  if (selectedIndex === -1) {
-    return
-  }
+  if (selectedIndex === -1) return
   const selectedFile = resultFileList[selectedIndex]
-  downloadFile =  selectedFile
-  // only load the file in niivue if it is nifti
+  downloadFile = selectedFile
   if (selectedFile.name.endsWith('.nii')) {
     removeAllVolumes()
-    console.log(selectedFile);
     const image = await NVImage.loadFromFile({
       file: selectedFile,
       name: selectedFile.name
@@ -152,175 +144,30 @@ const handleFileSelectChange = async (event) => {
   showSaveButton()
 }
 
-const removeSelectItems = () => {
-  const select = document.getElementById('fileSelect')
-  // remove all options elements
-  while (select.firstChild) {
-    select.removeChild(select.firstChild)
-  }
-}
-
-const updateSelectItems = (files) => {
-  removeSelectItems()
-  const select = document.getElementById('fileSelect')
-  select.innerHTML = ''
-  for (let i = 0; i < files.length; i++) {
-    const option = document.createElement('option')
-    option.value = i
-    option.text = files[i].name
-    select.appendChild(option)
-  }
-  // make first option say 'Select a file'
-  const option = document.createElement('option')
-  option.value = -1
-  option.text = 'Select a file'
-  option.selected = true
-  select.appendChild(option)
-}
-
-const runDcm2niix = async (files) => {
-  try {
-    hideSaveButton()
-    showLoadingCircle()
-    const dcm2niix = new Dcm2niix();
-    await dcm2niix.init();
-    const t0 = Date.now()
-    resultFileList = await dcm2niix.input(files).run()
-    const t1 = Date.now()
-    conversionTime = (t1 - t0) / 1000
-    showText(`Conversion time: ${conversionTime} seconds`)
-    // filter out files that are not nifti (.nii) so we don't show them
-    // in the select dropdown
-    // resultFileList = resultFileList.filter(file => file.name.endsWith('.nii'))
-    updateSelectItems(resultFileList)
-    console.log(resultFileList);
-    hideLoadingCircle()
-    showFileSelect()
-    // set the first file as the selected file
-    fileSelect.value = 0
-    // trigger the change event
-    const event = new Event('change')
-    fileSelect.dispatchEvent(event)
-  } catch (error) {
-    console.error(error);
-    resultFileList = []
-    hideLoadingCircle()
-    hideFileSelect()
-    showText('Error converting files. Check the console for more information.')
-  }
-}
-
-const ensureObjectOfObjects = (obj) => {
-  // check for the "length" property
-  if (obj.length) {
-    return obj
-  } else {
-    return { 0: obj }
-  }
-}
-
-async function handleDrop(e) {
-  e.preventDefault(); // prevent navigation to open file
-  const items = e.dataTransfer.items;
-  try {
-    showLoadingCircle()
-    const files = [];
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i].webkitGetAsEntry();
-      if (item) {
-        await traverseFileTree(item, '', files);
-      }
-    }
-    const dcm2niix = new Dcm2niix();
-    await dcm2niix.init()
-    resultFileList = await dcm2niix.inputFromDropItems(files).run()
-    resultFileList = resultFileList.filter(file => file.name.endsWith('.nii'))
-    updateSelectItems(resultFileList)
-    console.log(resultFileList);
-    hideLoadingCircle()
-    showFileSelect()
-    // set the first file as the selected file
-    fileSelect.value = 0
-    // trigger the change event
-    const event = new Event('change')
-    fileSelect.dispatchEvent(event)
-    showText('')
-  } catch (error) {
-    console.error(error);
-    hideLoadingCircle()
-    hideFileSelect()
-    showText('Error converting files. Check the console for more information.')
-  }
-}
-
-async function traverseFileTree(item, path = '', fileArray) {
-  return new Promise((resolve) => {
-    if (item.isFile) {
-      item.file(file => {
-        file.fullPath = path + file.name;
-        // IMPORTANT: _webkitRelativePath is required for dcm2niix to work.
-        // We need to add this property so we can parse multiple directories correctly.
-        // the "webkitRelativePath" property on File objects is read-only, so we can't set it directly, hence the underscore.
-        file._webkitRelativePath = path + file.name;
-        fileArray.push(file);
-        resolve();
-      });
-    } else if (item.isDirectory) {
-      const dirReader = item.createReader();
-      const readAllEntries = () => {
-        dirReader.readEntries(entries => {
-          if (entries.length > 0) {
-            const promises = [];
-            for (const entry of entries) {
-              promises.push(traverseFileTree(entry, path + item.name + '/', fileArray));
-            }
-            Promise.all(promises).then(readAllEntries);
-          } else {
-            resolve();
-          }
-        });
-      };
-      readAllEntries();
-    }
-  });
+const handleSaveButtonClick = () => {
+  const url = URL.createObjectURL(downloadFile)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = downloadFile.name
+  link.click()
 }
 
 async function main() {
-  fileInput.addEventListener('change', async (event) => {
-    if (event.target.files.length === 0) {
-      console.log('No files selected');
-      return;
-    }
-    console.log('Selected files:', event.target.files);
-    const selectedFiles = event.target.files;
-    const files = ensureObjectOfObjects(selectedFiles) // probably not needed anymore with new dcm2niix version
-    await runDcm2niix(files)
-  });
-
-  // when user changes the file to view
   fileSelect.onchange = handleFileSelectChange
-
-  // handle drag and drop
-  dropTarget.ondrop = handleDrop;
-  dropTarget.ondragover = (e) => { e.preventDefault(); }
-
-  // when user clicks save
   saveButton.onclick = handleSaveButtonClick
-
-  // user want to load manifest
   document.getElementById('loadManifestBtn').onclick = () => {
-    loadFromManifest('https://niivue.github.io/niivue-demo-images/dicom/niivue-manifest.txt')
+    loadDicomsWithNiivueLoader('https://niivue.github.io/niivue-demo-images/dicom/niivue-manifest.txt')
   }
 
-  // crosshair location change event
-  nv.onLocationChange = handleLocationChange
-  // get canvas element
+  nv.onLocationChange = (data) => showText(data.string)
+  nv.onVolumeAdded = (vol) => showText(`Loaded: ${vol.name}`)
+
   const canvas = document.getElementById('gl')
   nv.attachToCanvas(canvas)
-  // set some options
+
   nv.opts.yoke3Dto2DZoom = true
   nv.opts.crosshairGap = 5
-  nv.setInterpolation(true) // linear
+  nv.setInterpolation(true)
   nv.setMultiplanarLayout(MULTIPLANAR_TYPE.GRID)
   nv.setSliceType(SLICE_TYPE.MULTIPLANAR)
   nv.opts.multiplanarShowRender = SHOW_RENDER.ALWAYS

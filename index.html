@@ -1,52 +1,60 @@
 <!doctype html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="./niivue.css" />
-  <title>NiiVue + dcm2niix WASM</title>
+  <title>NiiVue DICOM Viewer</title>
 </head>
-
 <body>
   <header id="header">
     <div id="dropTarget" class="drop-target">
-      <p>Drop a folder of DICOM files here</p>
-      <p>Or use the file input button below</p>
+      <p><strong>Option 1:</strong> Drop a folder of DICOM files here</p>
+      <p>Or use the folder selection below</p>
     </div>
-    <!-- ordered list for instructions -->
+
     <ol id="instructions">
       <li>
-        <!-- directory input -->
-        <label for="fileInput" id="fileInputLabel" class="file-input-label">
-          Choose a folder of DICOM files
+        <!-- DICOM folder input using dcm2niix -->
+        <label for="fileInput" class="file-input-label">
+          Choose a folder of DICOM files (uses dcm2niix)
         </label>
         <input type="file" id="fileInput" webkitdirectory multiple />
       </li>
+
       <li>
-        <!-- file select for converted files returned from dcm2niix -->
-        <label for="fileSelect" id="fileSelectLabel">View a converted file</label>
+        <!-- NIfTI file selection if multiple output files -->
+        <label for="fileSelect" id="fileSelectLabel">
+          View a converted file (from dcm2niix)
+        </label>
         <select id="fileSelect" class="hidden"></select>
       </li>
+
       <li>
-        <!-- optional: save nii file in the niivue canvas from conversion -->
-        <label for="saveButton" id="saveButtonLabel">Optional: save the nifti file you are viewing</label>
+        <!-- Save converted file -->
+        <label for="saveButton" id="saveButtonLabel">
+          Save the currently viewed NIfTI file
+        </label>
         <button id="saveButton" class="hidden">Save selected file</button>
       </li>
+
       <li>
-        <!-- Load DICOMs from a remote manifest file -->
-        <label for="loadManifestBtn">Or load a demo manifest from the web</label>
-        <button id="loadManifestBtn">Load DICOMs from manifest</button>
+        <!-- Load demo using dicom-loader -->
+        <label for="loadManifestBtn">
+          Or load a demo DICOM series (uses dicom-loader)
+        </label>
+        <button id="loadManifestBtn">Load demo from manifest</button>
       </li>
     </ol>
 
-    <div id="loadingCircle" class="loading-circle hidden"></div>
+    <div id="loadingCircle" class="loading-circle hidden">Loading...</div>
   </header>
+
   <main id="canvas-container">
-    <canvas id="gl"></canvas>
+    <canvas id="gl" width="800" height="600"></canvas>
   </main>
+
   <footer id="intensity">&nbsp;</footer>
   <script type="module" src="/main.js"></script>
 </body>
-
 </html>
