@@ -87,11 +87,12 @@ async function loadDicomsWithNiivueLoader(manifestURL) {
     }
   ])
 
-  const vol = nv.volumes[nv.volumes.length - 1]
+  const vol = nv.volumes[nv.volumes.length - 1]  
   const name = vol?.name || 'Unnamed volume'
   const endTime = performance.now()
   const elapsed = ((endTime - startTime) / 1000).toFixed(2)
   showText(`Loaded ${name} in ${elapsed} seconds`)
+  showSaveButton()
 }
 
 
@@ -139,17 +140,21 @@ const handleFileSelectChange = async (event) => {
       file: selectedFile,
       name: selectedFile.name
     })
-    await nv.addVolume(image)
+    nv.addVolume(image)
   }
   showSaveButton()
 }
 
-const handleSaveButtonClick = () => {
-  const url = URL.createObjectURL(downloadFile)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = downloadFile.name
-  link.click()
+const handleSaveButtonClick = async () => {
+  if (nv.volumes.length === 0) {
+    console.log('no volumes found')
+    return
+  }
+  const vol = nv.volumes[0]
+  const name = vol.name || 'volume'
+  const ext = vol.niiFile?.name?.endsWith('.nii.gz') ? '.nii.gz' : '.nii'
+  console.log('saving ', name)
+  await nv.saveImage({filename: `${name}${ext}`})
 }
 
 async function main() {
