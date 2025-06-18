@@ -1,23 +1,130 @@
 import { Niivue, NVImage, DRAG_MODE, SLICE_TYPE, MULTIPLANAR_TYPE, SHOW_RENDER } from '@niivue/niivue'
 import { Dcm2niix } from '@niivue/dcm2niix'
+import { dicomLoader } from '@niivue/dicom-loader'
 import './niivue.css'
 
-// page-wide niivue instance
-const nv = new Niivue({
-  dragAndDropEnabled: false, // disable drag and drop since we want to use input from the file input element
-})
+/**
+ * Load DICOM files from a manifest URL using the Dcm2niix WebAssembly backend.
+ * 
+ * This function fetches a text-based manifest file containing relative paths to DICOM images,
+ * downloads and wraps them as `File` objects with proper `webkitRelativePath` attributes,
+ * runs the DICOM-to-NIfTI conversion via `@niivue/dcm2niix`, and updates the UI with the result.
+ * 
+ * This is a manual reference implementation that mirrors the functionality of `@niivue/dicom-loader`.
+ * 
+ * @param manifestUrl - A full URL pointing to a manifest text file with relative DICOM paths
+ * @returns A promise that resolves to an array of converted NIfTI `File` objects
+ */
+async function loadDicomsUsingDcm2niixFromManifest(manifestUrl) {
+  console.log('Starting manual DICOM load from manifest via dcm2niix...')
+  try {
+    hideSaveButton()
+    showLoadingCircle()
+
+    const baseUrl = new URL(manifestUrl)
+    const response = await fetch(manifestUrl)
+    const text = await response.text()
+    const urls = text.trim().split('\n')
+
+    const dicomFiles = await Promise.all(
+      urls.map(async (relativePath) => {
+        const url = new URL(relativePath, baseUrl)
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`Failed to fetch DICOM: ${url}`)
+        const arrayBuffer = await res.arrayBuffer()
+        const filename = url.pathname.split('/').pop()
+        const fullPath = `series/${filename}`
+        const file = new File([arrayBuffer], filename)
+        Object.defineProperty(file, 'webkitRelativePath', {
+          value: fullPath,
+          writable: false
+        })
+        return file
+      })
+    )
+
+    const dcm2niix = new Dcm2niix()
+    await dcm2niix.init()
+    let resultFileList = await dcm2niix.input(dicomFiles).run()
+    resultFileList = resultFileList.filter(f => f.name.endsWith('.nii') || f.name.endsWith('.nii.gz'))
+
+    updateSelectItems(resultFileList)
+    hideLoadingCircle()
+    showFileSelect()
+
+    fileSelect.value = 0
+    fileSelect.dispatchEvent(new Event('change'))
+    showText('Loaded via manual dcm2niix')
+
+    return resultFileList
+  } catch (err) {
+    console.error('Error in loadDicomsUsingDcm2niixFromManifest:', err)
+    hideLoadingCircle()
+    hideFileSelect()
+    showText('Error loading DICOMs manually')
+    return []
+  }
+}
+
+/**
+ * Load DICOMs from a manifest using @niivue/dicom-loader
+ * and display the time taken to load and decode them.
+ * 
+ * @param manifestURL - URL to a text manifest with relative DICOM file paths
+ */
+async function loadDicomsWithNiivueLoader(manifestURL) {
+  console.log('Loading DICOM manifest via dicom-loader...')
+  showLoadingCircle()
+  const startTime = performance.now()
+
+  nv.useDicomLoader({ loader: dicomLoader })
+
+  await nv.loadDicoms([
+    {
+      url: manifestURL,
+      isManifest: true
+    }
+  ])
+
+  const vol = nv.volumes[nv.volumes.length - 1]
+  const name = vol?.name || 'Unnamed volume'
+  const endTime = performance.now()
+  const elapsed = ((endTime - startTime) / 1000).toFixed(2)
+  hideLoadingCircle()
+  showText(`Loaded ${name} in ${elapsed} seconds`)
+  showSaveButton()
+}
+
+// NiiVue instance
+const nv = new Niivue({ dragAndDropEnabled: false })
+
 // reference to the results list from dcm2niix for use later
 let resultFileList = []
 let conversionTime = 0
 let downloadFile = null
 
 
-const handleSaveButtonClick = () => {
-  let url = URL.createObjectURL(downloadFile);
-  const downloadLink = document.createElement('a');
-  downloadLink.href = url;
-  downloadLink.download = downloadFile.name;
-  downloadLink.click()
+const handleSaveButtonClick = async () => {
+  
+  if (nv.volumes.length === 0) {
+    if(downloadFile) {
+      let url = URL.createObjectURL(downloadFile);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = url;
+      downloadLink.download = downloadFile.name;
+      downloadLink.click()
+
+    }
+    else {
+      console.log('no volumes found')
+    }
+    return
+  }
+  const vol = nv.volumes[0]
+  const name = vol.name || 'volume'
+  const ext = vol.niiFile?.name?.endsWith('.nii.gz') ? '.nii.gz' : '.nii'
+  console.log('saving ', name)
+  await nv.saveImage({filename: `${name}${ext}`})
 }
 
 const showSaveButton = () => {
@@ -239,6 +346,11 @@ async function main() {
 
   // when user clicks save
   saveButton.onclick = handleSaveButtonClick
+
+  // when a user clicks load manifest
+  document.getElementById('loadManifestBtn').onclick = () => {
+    loadDicomsWithNiivueLoader('https://niivue.github.io/niivue-demo-images/dicom/niivue-manifest.txt')
+  }
 
   // crosshair location change event
   nv.onLocationChange = handleLocationChange
